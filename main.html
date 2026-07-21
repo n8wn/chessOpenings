@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Openings Ledger — Chess Opening Trainer</title>
+<style>
+  :root{
+    --wood-dark:#7a5233;
+    --wood-light:#e8d9ba;
+    --bg:#1c140f;
+    --panel:#271c15;
+    --panel-2:#302319;
+    --hairline:#4a382a;
+    --cream:#f1e7d6;
+    --muted:#b6a58c;
+    --gold:#c9a24a;
+    --gold-dim:#8d7233;
+    --rust:#b0563a;
+    --sage:#7f9a7a;
+    --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --mono: 'Courier New', ui-monospace, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--cream);
+    font-family:var(--sans);
+    min-height:100vh;
+  }
+  ::selection{ background:var(--gold-dim); color:var(--cream); }
+
+  /* ---------- intro / color choice screen ---------- */
+  #intro{
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:32px 20px; text-align:center;
+  }
+  #intro .eyebrow{
+    font-family:var(--mono); letter-spacing:.18em; text-transform:uppercase;
+    color:var(--gold-dim); font-size:12px; margin-bottom:10px;
+  }
+  #intro h1{
+    font-family:var(--serif); font-weight:400; font-size:clamp(28px,5vw,44px);
+    margin:0 0 8px; color:var(--cream);
+  }
+  #intro p.sub{ color:var(--muted); max-width:480px; margin:0 0 34px; line-height:1.5; font-size:15px;}
+  .choice-row{ display:flex; gap:18px; flex-wrap:wrap; justify-content:center; }
+  .choice-card{
+    width:170px; padding:22px 16px; border:1px solid var(--hairline); border-radius:6px;
+    background:var(--panel); cursor:pointer; transition:border-color .15s, transform .15s;
+    font-family:var(--sans);
+  }
+  .choice-card:hover{ border-color:var(--gold-dim); transform:translateY(-2px); }
+  .choice-card .glyph{ font-size:44px; line-height:1; margin-bottom:10px; }
+  .choice-card .glyph.white{ color:var(--cream); text-shadow:0 0 1px #000, 0 0 6px rgba(0,0,0,.5); }
+  .choice-card .glyph.black{ color:#0d0904; text-shadow:0 0 1px var(--gold-dim); }
+  .choice-card .label{ font-size:14px; letter-spacing:.03em; color:var(--cream); }
+  .choice-card .desc{ font-size:12px; color:var(--muted); margin-top:4px; }
+
+  /* ---------- app shell ---------- */
+  #app{ display:none; max-width:1180px; margin:0 auto; padding:20px 18px 60px; }
+  header.top{
+    display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:12px;
+    border-bottom:1px solid var(--hairline); padding-bottom:14px; margin-bottom:20px;
+  }
+  header.top h1{
+    font-family:var(--serif); font-weight:400; font-size:22px; margin:0; color:var(--cream);
+    display:flex; align-items:center; gap:10px;
+  }
+  header.top h1 .mark{ color:var(--gold); }
+  .top-controls{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  button.ctl{
+    font-family:var(--mono); font-size:12px; letter-spacing:.04em; text-transform:uppercase;
+    background:var(--panel-2); color:var(--muted); border:1px solid var(--hairline);
+    padding:8px 12px; border-radius:4px; cursor:pointer; transition:.15s;
+  }
+  button.ctl:hover{ color:var(--cream); border-color:var(--gold-dim); }
+  button.ctl:disabled{ opacity:.35; cursor:not-allowed; }
+  button.ctl.primary{ color:var(--gold); border-color:var(--gold-dim); }
+
+  .layout{ display:grid; grid-template-columns: minmax(320px,520px) 1fr; gap:26px; align-items:start; }
+  @media (max-width: 880px){ .layout{ grid-template-columns:1fr; } }
+
+  /* ---------- board ---------- */
+  #board-wrap{ display:flex; flex-direction:column; align-items:center; gap:14px; }
+  #board{
+    width:100%; max-width:520px; aspect-ratio:1/1; display:grid;
+    grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr);
+    border:10px solid #4a3220; border-radius:3px; box-shadow:0 10px 34px rgba(0,0,0,.45);
+    position:relative; touch-action:none; user-select:none;
+  }
+  .sq{ position:relative; display:flex; align-items:center; justify-content:center; }
+  .sq.light{ background:var(--wood-light); }
+  .sq.dark{ background:var(--wood-dark); }
+  .sq .coord{
+    position:absolute; font-family:var(--mono); font-size:9px; opacity:.5; top:2px; left:3px;
+  }
+  .sq.light .coord{ color:var(--wood-dark); }
+  .sq.dark .coord{ color:var(--wood-light); }
+  .sq.selected{ box-shadow: inset 0 0 0 3px var(--gold); }
+  .sq.last-from, .sq.last-to{ box-shadow: inset 0 0 0 3px rgba(201,162,74,.55); }
+  .sq .dest-dot{
+    position:absolute; width:26%; height:26%; border-radius:50%; background:rgba(50,30,10,.35); pointer-events:none;
+  }
+  .sq .dest-dot.capture{ width:100%; height:100%; border-radius:0; background:none;
+    box-shadow: inset 0 0 0 5px rgba(176,86,58,.55); }
+  .piece{
+    font-size:min(9.5vw,52px); line-height:1; cursor:grab; position:relative; z-index:2;
+  }
+  .piece.white{ color:#f7efe0; text-shadow: 0 1px 0 #000, 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000, 0 2px 3px rgba(0,0,0,.45); }
+  .piece.black{ color:#171009; text-shadow: 0 1px 0 rgba(201,162,74,.65), 0 2px 3px rgba(0,0,0,.4); }
+  .piece.dragging-source{ opacity:.25; }
+  .floating-piece{
+    position:fixed; z-index:999; pointer-events:none; font-size:min(9.5vw,52px);
+  }
+
+  .orientation-note{ font-size:12px; color:var(--muted); font-family:var(--mono); text-align:center; }
+
+  /* ---------- side panel ---------- */
+  .panel-block{
+    background:var(--panel); border:1px solid var(--hairline); border-radius:6px; padding:16px 18px; margin-bottom:16px;
+  }
+  .panel-block h2{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--gold-dim); margin:0 0 12px;
+  }
+  #status-name{ font-family:var(--serif); font-size:21px; color:var(--cream); margin:0 0 6px; }
+  #status-sub{ font-size:13px; color:var(--muted); margin:0; }
+  .badge{
+    display:inline-block; font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+    padding:3px 9px; border-radius:20px; margin-top:10px;
+  }
+  .badge.in-book{ background:rgba(127,154,122,.16); color:var(--sage); border:1px solid rgba(127,154,122,.4); }
+  .badge.out-book{ background:rgba(176,86,58,.16); color:var(--rust); border:1px solid rgba(176,86,58,.4); }
+
+  .chip-row{ display:flex; flex-wrap:wrap; gap:8px; }
+  .chip{
+    font-family:var(--mono); font-size:13px; background:var(--panel-2); border:1px solid var(--hairline);
+    color:var(--cream); padding:6px 10px; border-radius:4px; cursor:pointer; transition:.15s;
+    display:flex; flex-direction:column; align-items:flex-start; gap:2px; max-width:220px;
+  }
+  .chip:hover{ border-color:var(--gold); color:var(--gold); }
+  .chip .san{ font-weight:bold; }
+  .chip .nm{ font-family:var(--sans); font-size:10.5px; color:var(--muted); white-space:normal; }
+  .empty-note{ color:var(--muted); font-size:13px; font-style:italic; }
+
+  /* ---------- tree ---------- */
+  #tree{ max-height:340px; overflow-y:auto; padding-right:4px; }
+  .tree-row{ display:flex; align-items:flex-start; position:relative; padding-left:18px; min-height:34px; }
+  .tree-row::before{
+    content:''; position:absolute; left:5px; top:0; bottom:0; width:1px; background:var(--hairline);
+  }
+  .tree-row:first-child::before{ top:16px; }
+  .tree-row:last-child::before{ bottom:calc(100% - 16px); }
+  .tree-row .node-dot{
+    position:absolute; left:1px; top:12px; width:9px; height:9px; border-radius:50%;
+    background:var(--gold); border:2px solid var(--bg);
+  }
+  .tree-row.out .node-dot{ background:var(--rust); }
+  .tree-row .node-main{
+    display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; padding:6px 0 6px 10px;
+  }
+  .tree-row .ply-label{ font-family:var(--mono); font-size:11px; color:var(--muted); width:34px; flex:none; }
+  .tree-row .played-san{ font-family:var(--mono); font-size:14px; color:var(--cream); font-weight:bold; }
+  .tree-row.out .played-san{ color:var(--rust); }
+  .tree-row .played-name{ font-size:11.5px; color:var(--gold-dim); }
+  .tree-row .branches{ display:flex; gap:6px; flex-wrap:wrap; margin-left:6px; }
+  .tree-row .twig{
+    font-family:var(--mono); font-size:11px; color:var(--muted); background:transparent;
+    border:1px dashed var(--hairline); border-radius:3px; padding:2px 6px; cursor:pointer;
+  }
+  .tree-row .twig:hover{ color:var(--gold); border-color:var(--gold-dim); }
+
+  /* ---------- move history ---------- */
+  #history-list{ display:grid; grid-template-columns: 30px 1fr 1fr; row-gap:4px; font-family:var(--mono); font-size:13px; }
+  #history-list .mv-num{ color:var(--muted); }
+  #history-list .mv{ color:var(--cream); }
+  #history-list .mv.out{ color:var(--rust); }
+
+  footer.credit{ text-align:center; color:var(--hairline); font-family:var(--mono); font-size:11px; margin-top:30px; }
+</style>
+</head>
+<body>
+
+<div id="intro">
+  <div class="eyebrow">Openings Ledger</div>
+  <h1>Study the book, move by move.</h1>
+  <p class="sub">Play out any opening move by move — for either side. The moment you step outside known theory, it'll tell you plainly. Choose which side of the board you'd like to view from (you'll be moving both colors).</p>
+  <div class="choice-row">
+    <div class="choice-card" data-choice="white">
+      <div class="glyph white">♔</div>
+      <div class="label">View as White</div>
+      <div class="desc">Board with White at the bottom</div>
+    </div>
+    <div class="choice-card" data-choice="black">
+      <div class="glyph black">♚</div>
+      <div class="label">View as Black</div>
+      <div class="desc">Board with Black at the bottom</div>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <header class="top">
+    <h1><span class="mark">♟</span> Openings Ledger</h1>
+    <div class="top-controls">
+      <button class="ctl" id="btn-flip">Flip Board</button>
+      <button class="ctl" id="btn-undo">Undo</button>
+      <button class="ctl primary" id="btn-reset">New Game</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div id="board-wrap">
+      <div id="board"></div>
+      <div class="orientation-note" id="orientation-note"></div>
+    </div>
+
+    <div id="side">
+      <div class="panel-block">
+        <h2>Current Line</h2>
+        <p id="status-name">Starting Position</p>
+        <p id="status-sub">Make a move to begin.</p>
+        <span class="badge in-book" id="status-badge">In Theory</span>
+      </div>
+
+      <div class="panel-block">
+        <h2>Theory Moves From Here</h2>
+        <div class="chip-row" id="book-moves"></div>
+      </div>
+
+      <div class="panel-block">
+        <h2>Line &amp; Branches</h2>
+        <div id="tree"></div>
+      </div>
+
+      <div class="panel-block">
+        <h2>Move List</h2>
+        <div id="history-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="credit">every line here is validated move-by-move against full chess rules</footer>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================================
+   CHESS ENGINE  (full legal move generation, SAN notation)
+   ========================================================================= */
+
+function initialBoard() {
+  const b = new Array(64).fill(null);
+  const back = ['R','N','B','Q','K','B','N','R'];
+  for (let c = 0; c < 8; c++) {
+    b[0*8+c] = 'b'+back[c];
+    b[1*8+c] = 'bP';
+    b[6*8+c] = 'wP';
+    b[7*8+c] = 'w'+back[c];
+  }
+  return b;
+}
+function sq(row,col){ return row*8+col; }
+function inBounds(row,col){ return row>=0&&row<8&&col>=0&&col<8; }
+function fileOf(col){ return 'abcdefgh'[col]; }
+function rankOf(row){ return String(8-row); }
+function algebraic(row,col){ return fileOf(col)+rankOf(row); }
+function color(piece){ return piece ? piece[0] : null; }
+function type(piece){ return piece ? piece[1] : null; }
+function opp(c){ return c==='w'?'b':'w'; }
+
+function cloneState(state) {
+  return { board: state.board.slice(), turn: state.turn, castling: {...state.castling},
+    enPassant: state.enPassant, halfmove: state.halfmove, fullmove: state.fullmove };
+}
+function newGame() {
+  return { board: initialBoard(), turn: 'w', castling: {wK:true,wQ:true,bK:true,bQ:true},
+    enPassant: null, halfmove: 0, fullmove: 1 };
+}
+
+const KNIGHT_DELTAS = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+const KING_DELTAS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+const BISHOP_DIRS = [[-1,-1],[-1,1],[1,-1],[1,1]];
+const ROOK_DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+
+function isAttacked(board, square, byColor) {
+  const row = Math.floor(square/8), col = square%8;
+  const pawnRow = byColor==='w' ? row+1 : row-1;
+  for (const dc of [-1,1]) {
+    const r=pawnRow, c=col+dc;
+    if (inBounds(r,c)) { const p = board[sq(r,c)]; if (p===byColor+'P') return true; }
+  }
+  for (const [dr,dc] of KNIGHT_DELTAS) {
+    const r=row+dr,c=col+dc;
+    if (inBounds(r,c) && board[sq(r,c)]===byColor+'N') return true;
+  }
+  for (const [dr,dc] of KING_DELTAS) {
+    const r=row+dr,c=col+dc;
+    if (inBounds(r,c) && board[sq(r,c)]===byColor+'K') return true;
+  }
+  for (const [dr,dc] of BISHOP_DIRS) {
+    let r=row+dr,c=col+dc;
+    while (inBounds(r,c)) {
+      const p = board[sq(r,c)];
+      if (p) { if (color(p)===byColor && (type(p)==='B'||type(p)==='Q')) return true; break; }
+      r+=dr; c+=dc;
+    }
+  }
+  for (const [dr,dc] of ROOK_DIRS) {
+    let r=row+dr,c=col+dc;
+    while (inBounds(r,c)) {
+      const p = board[sq(r,c)];
+      if (p) { if (color(p)===byColor && (type(p)==='R'||type(p)==='Q')) return true; break; }
+      r+=dr; c+=dc;
+    }
+  }
+  return false;
+}
+function findKing(board, c) { for (let i=0;i<64;i++) if (board[i]===c+'K') return i; return -1; }
+
+function pseudoMovesFor(state, from) {
+  const {board, turn, castling, enPassant} = state;
+  const piece = board[from];
+  if (!piece || color(piece)!==turn) return [];
+  const t = type(piece);
+  const row = Math.floor(from/8), col = from%8;
+  const moves = [];
+  const addSlide = (dirs) => {
+    for (const [dr,dc] of dirs) {
+      let r=row+dr,c=col+dc;
+      while (inBounds(r,c)) {
+        const to = sq(r,c); const target = board[to];
+        if (!target) { moves.push({from,to,piece,capture:false,enPassant:false,promotion:null,castle:null,doublePawn:false}); }
+        else { if (color(target)!==turn) moves.push({from,to,piece,capture:true,enPassant:false,promotion:null,castle:null,doublePawn:false}); break; }
+        r+=dr; c+=dc;
+      }
+    }
+  };
+  if (t==='N') {
+    for (const [dr,dc] of KNIGHT_DELTAS) {
+      const r=row+dr,c=col+dc; if (!inBounds(r,c)) continue;
+      const to = sq(r,c); const target = board[to];
+      if (!target || color(target)!==turn) moves.push({from,to,piece,capture:!!target,enPassant:false,promotion:null,castle:null,doublePawn:false});
+    }
+  } else if (t==='B') { addSlide(BISHOP_DIRS); }
+  else if (t==='R') { addSlide(ROOK_DIRS); }
+  else if (t==='Q') { addSlide(BISHOP_DIRS); addSlide(ROOK_DIRS); }
+  else if (t==='K') {
+    for (const [dr,dc] of KING_DELTAS) {
+      const r=row+dr,c=col+dc; if (!inBounds(r,c)) continue;
+      const to = sq(r,c); const target = board[to];
+      if (!target || color(target)!==turn) moves.push({from,to,piece,capture:!!target,enPassant:false,promotion:null,castle:null,doublePawn:false});
+    }
+    const homeRow = turn==='w'?7:0;
+    if (row===homeRow && col===4) {
+      const kSideKey = turn+'K', qSideKey = turn+'Q';
+      if (castling[kSideKey] && !board[sq(homeRow,5)] && !board[sq(homeRow,6)] && board[sq(homeRow,7)]===turn+'R') {
+        if (!isAttacked(board, sq(homeRow,4), opp(turn)) && !isAttacked(board, sq(homeRow,5), opp(turn)) && !isAttacked(board, sq(homeRow,6), opp(turn))) {
+          moves.push({from, to:sq(homeRow,6), piece, capture:false, enPassant:false, promotion:null, castle:'K', doublePawn:false});
+        }
+      }
+      if (castling[qSideKey] && !board[sq(homeRow,3)] && !board[sq(homeRow,2)] && !board[sq(homeRow,1)] && board[sq(homeRow,0)]===turn+'R') {
+        if (!isAttacked(board, sq(homeRow,4), opp(turn)) && !isAttacked(board, sq(homeRow,3), opp(turn)) && !isAttacked(board, sq(homeRow,2), opp(turn))) {
+          moves.push({from, to:sq(homeRow,2), piece, capture:false, enPassant:false, promotion:null, castle:'Q', doublePawn:false});
+        }
+      }
+    }
+  } else if (t==='P') {
+    const dir = turn==='w' ? -1 : 1;
+    const startRow = turn==='w' ? 6 : 1;
+    const promoRow = turn==='w' ? 0 : 7;
+    const r1 = row+dir;
+    if (inBounds(r1,col) && !board[sq(r1,col)]) {
+      if (r1===promoRow) { for (const promo of ['Q','R','B','N']) moves.push({from,to:sq(r1,col),piece,capture:false,enPassant:false,promotion:promo,castle:null,doublePawn:false}); }
+      else {
+        moves.push({from,to:sq(r1,col),piece,capture:false,enPassant:false,promotion:null,castle:null,doublePawn:false});
+        const r2 = row+2*dir;
+        if (row===startRow && !board[sq(r2,col)]) moves.push({from,to:sq(r2,col),piece,capture:false,enPassant:false,promotion:null,castle:null,doublePawn:true});
+      }
+    }
+    for (const dc of [-1,1]) {
+      const r=row+dir, c=col+dc; if (!inBounds(r,c)) continue;
+      const to = sq(r,c); const target = board[to];
+      if (target && color(target)!==turn) {
+        if (r===promoRow) { for (const promo of ['Q','R','B','N']) moves.push({from,to,piece,capture:true,enPassant:false,promotion:promo,castle:null,doublePawn:false}); }
+        else moves.push({from,to,piece,capture:true,enPassant:false,promotion:null,castle:null,doublePawn:false});
+      } else if (enPassant!==null && to===enPassant) {
+        moves.push({from,to,piece,capture:true,enPassant:true,promotion:null,castle:null,doublePawn:false});
+      }
+    }
+  }
+  return moves;
+}
+
+function applyMoveToBoard(board, move) {
+  const b = board.slice();
+  const {from,to,piece,enPassant,promotion,castle} = move;
+  b[from] = null;
+  b[to] = promotion ? color(piece)+promotion : piece;
+  if (enPassant) {
+    const capturedRow = Math.floor(to/8) + (color(piece)==='w'?1:-1);
+    const capturedCol = to%8;
+    b[sq(capturedRow,capturedCol)] = null;
+  }
+  if (castle) {
+    const row = Math.floor(from/8);
+    if (castle==='K') { b[sq(row,5)] = b[sq(row,7)]; b[sq(row,7)] = null; }
+    else { b[sq(row,3)] = b[sq(row,0)]; b[sq(row,0)] = null; }
+  }
+  return b;
+}
+
+function legalMoves(state, fromSquare) {
+  const squares = fromSquare!==undefined ? [fromSquare] : [...Array(64).keys()];
+  const result = [];
+  for (const from of squares) {
+    if (state.board[from]===null || color(state.board[from])!==state.turn) continue;
+    const pseudo = pseudoMovesFor(state, from);
+    for (const m of pseudo) {
+      const newBoard = applyMoveToBoard(state.board, m);
+      if (!isAttacked(newBoard, findKing(newBoard, state.turn), opp(state.turn))) result.push(m);
+    }
+  }
+  return result;
+}
+function isInCheck(state, c) { return isAttacked(state.board, findKing(state.board, c), opp(c)); }
+
+function sanFor(state, move, allLegalMoves) {
+  if (move.castle==='K') return finishSan(state, move, 'O-O');
+  if (move.castle==='Q') return finishSan(state, move, 'O-O-O');
+  const t = type(move.piece);
+  let s = '';
+  if (t==='P') {
+    if (move.capture) s += fileOf(move.from%8) + 'x';
+    s += algebraic(Math.floor(move.to/8), move.to%8);
+    if (move.promotion) s += '=' + move.promotion;
+  } else {
+    s += t;
+    const others = allLegalMoves.filter(m => m!==move && type(m.piece)===t && m.to===move.to && m.from!==move.from);
+    if (others.length>0) {
+      const sameFile = others.some(m => (m.from%8)===(move.from%8));
+      const sameRank = others.some(m => Math.floor(m.from/8)===Math.floor(move.from/8));
+      const fromFile = fileOf(move.from%8), fromRank = rankOf(Math.floor(move.from/8));
+      if (!sameFile) s += fromFile; else if (!sameRank) s += fromRank; else s += fromFile+fromRank;
+    }
+    if (move.capture) s += 'x';
+    s += algebraic(Math.floor(move.to/8), move.to%8);
+  }
+  return finishSan(state, move, s);
+}
+function finishSan(state, move, base) {
+  const newState = makeMove(state, move, true);
+  const inCheck = isInCheck(newState, newState.turn);
+  if (inCheck) { const mates = legalMoves(newState).length===0; return base + (mates ? '#' : '+'); }
+  return base;
+}
+function makeMove(state, move, _skip) {
+  const ns = cloneState(state);
+  ns.board = applyMoveToBoard(state.board, move);
+  const c = color(move.piece);
+  if (type(move.piece)==='K') { ns.castling[c+'K']=false; ns.castling[c+'Q']=false; }
+  const clearRookRight = (square) => {
+    if (square===sq(7,0)) ns.castling.wQ=false;
+    if (square===sq(7,7)) ns.castling.wK=false;
+    if (square===sq(0,0)) ns.castling.bQ=false;
+    if (square===sq(0,7)) ns.castling.bK=false;
+  };
+  clearRookRight(move.from); clearRookRight(move.to);
+  if (move.doublePawn) { const midRow = (Math.floor(move.from/8)+Math.floor(move.to/8))/2; ns.enPassant = sq(midRow, move.from%8); }
+  else ns.enPassant = null;
+  if (!_skip) ns.halfmove = (move.capture || type(move.piece)==='P') ? 0 : state.halfmove+1;
+  ns.turn = opp(state.turn);
+  if (state.turn==='b') ns.fullmove = state.fullmove+1;
+  return ns;
+}
+
+function stripSuffix(s){ return s.replace(/[+#]$/, ''); }
+
+/* =========================================================================
+   OPENING DATABASE  (built from LINES at load time — see below)
+   ========================================================================= */
+
+const LINES = [
+  // ===================== umbrella / broad category labels =====================
+  // these name the position immediately after a defining move, before it
+  // branches into anything more specific — kept separate so the tree shows
+  // a label right away instead of waiting for a deeper, named line.
+  ['e4', "King's Pawn Game"],
+  ['d4', "Queen's Pawn Game"],
+  ['Nf3', "Réti Opening"],
+
+  // ===================== 1.e4 e5 =====================
+  ['e4 e5', "Open Game"],
+  ['e4 e5 Nf3 Nc6 Bb5', "Ruy Lopez (Spanish Opening)"],
+  ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4', "Ruy Lopez, Morphy Defense"],
+  ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 O-O c3 d6', "Ruy Lopez, Closed Defense"],
+  ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 O-O c3 Na5 Bc2 c5', "Ruy Lopez, Chigorin Variation"],
+  ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 O-O c3 d5 exd5 Nxd5 Nxe5 Nxe5 Rxe5 c6', "Ruy Lopez, Marshall Attack"],
+  ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 d3', "Ruy Lopez, Morphy Defense, Modern (Anti-Marshall)"],
+  ['e4 e5 Nf3 Nc6 Bb5 a6 Bxc6 dxc6 O-O', "Ruy Lopez, Exchange Variation"],
+  ['e4 e5 Nf3 Nc6 Bb5 Nf6', "Ruy Lopez, Berlin Defense"],
+  ['e4 e5 Nf3 Nc6 Bb5 Nf6 O-O Nxe4', "Ruy Lopez, Berlin Defense, Open Variation"],
+  ['e4 e5 Nf3 Nc6 Bb5 Nf6 O-O Nxe4 d4 Nd6 Bxc6 dxc6 dxe5 Nf5', "Ruy Lopez, Berlin Defense, Endgame"],
+  ['e4 e5 Nf3 Nc6 Bb5 Nf6 O-O d6 d4 Bd7 Nc3 Be7', "Ruy Lopez, Berlin Defense Declined"],
+  ['e4 e5 Nf3 Nc6 Bb5 Nf6 d3', "Ruy Lopez, Berlin Defense, Anti-Berlin"],
+  ['e4 e5 Nf3 Nc6 Bb5 d6 d4 Bd7 Nc3 Nf6', "Ruy Lopez, Steinitz Defense"],
+  ['e4 e5 Nf3 Nc6 Bb5 g6 d4 exd4 Nxd4 Bg7', "Ruy Lopez, Fianchetto (Smyslov) Defense"],
+  ['e4 e5 Nf3 Nc6 Bb5 Bc5 c3 Nf6 d4', "Ruy Lopez, Classical Defense"],
+  ['e4 e5 Nf3 Nc6 Bb5 f5 Nc3 fxe4 Nxe4', "Ruy Lopez, Schliemann (Jaenisch) Gambit"],
+
+  ['e4 e5 Nf3 Nc6 Bc4', "Italian Game"],
+  ['e4 e5 Nf3 Nc6 Bc4 Bc5', "Italian Game, Giuoco Piano"],
+  ['e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 O-O', "Italian Game, Giuoco Pianissimo"],
+  ['e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4 exd4 cxd4 Bb4+', "Italian Game, Giuoco Piano, Main Line"],
+  ['e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4 exd4 cxd4 Bb4+ Nc3 Nxe4 O-O Bxc3', "Giuoco Piano, Main Line, Nc3 gambit"],
+  ['e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4 exd4 cxd4 Bb4+ Bd2 Bxd2+ Nbxd2 d5', "Giuoco Piano, Main Line, Bd2 line"],
+  ['e4 e5 Nf3 Nc6 Bc4 Bc5 b4', "Italian Game, Evans Gambit"],
+  ['e4 e5 Nf3 Nc6 Bc4 Bc5 b4 Bxb4 c3 Ba5 d4 exd4 O-O', "Evans Gambit, Main Line"],
+  ['e4 e5 Nf3 Nc6 Bc4 Nf6', "Italian Game, Two Knights Defense"],
+  ['e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Na5', "Two Knights Defense, Main Line"],
+  ['e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Na5 Bb5+ c6 dxc6 bxc6', "Two Knights Defense, Main Line continued"],
+  ['e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Nxd5 Nxf7 Kxf7 Qf3+ Ke6 Nc3', "Fried Liver Attack"],
+  ['e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 b5 Bf1 Nd4', "Two Knights Defense, Ulvestad Variation"],
+  ['e4 e5 Nf3 Nc6 Bc4 Nf6 d3 Bc5', "Italian Game, Two Knights, Quiet Line"],
+  ['e4 e5 Nf3 Nc6 Bc4 Nf6 Nc3 Nxe4 Nxe4 d5', "Two Knights, Nc3 line"],
+  ['e4 e5 Nf3 Nc6 Bc4 Nf6 d4 exd4 O-O', "Italian Game, Two Knights, Modern (Max Lange-ish) Variation"],
+
+  ['e4 e5 Nf3 Nc6 d4', "Scotch Game"],
+  ['e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Nf6 Nxc6 bxc6 e5 Qe7 Qe2 Nd5', "Scotch Game, Main Line"],
+  ['e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Nf6 Nc3 Bb4', "Scotch Game, Four Knights Variation"],
+  ['e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Bc5 Be3 Qf6 c3', "Scotch Game, Classical Variation"],
+  ['e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Qh4 Nc3 Bb4', "Scotch Game, Steinitz Variation"],
+  ['e4 e5 Nf3 Nc6 d4 exd4 Bc4', "Scotch Gambit"],
+  ['e4 e5 Nf3 Nc6 d4 exd4 Bc4 Bc5', "Scotch Gambit, Bc5"],
+  ['e4 e5 Nf3 Nc6 d4 exd4 Bc4 Nf6', "Scotch Gambit, Nf6"],
+
+  ['e4 e5 Nf3 Nc6 Nc3', "Four Knights Game"],
+  ['e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5 Bb4 O-O O-O d3 d6', "Four Knights Game, Spanish Variation"],
+  ['e4 e5 Nf3 Nc6 Nc3 Nf6 Bc4 Nxe4 Nxe4 d5', "Four Knights Game, Italian Variation"],
+  ['e4 e5 Nf3 Nc6 Nc3 Nf6 d4 exd4 Nxd4 Bb4', "Four Knights Game, Scotch Variation"],
+
+  ['e4 e5 Nf3 Nf6', "Petrov's (Russian) Defense"],
+  ['e4 e5 Nf3 Nf6 Nxe5 d6 Nf3 Nxe4 d4 d5 Bd3 Nc6 O-O Be7', "Petrov's Defense, Classical Main Line"],
+  ['e4 e5 Nf3 Nf6 Nxe5 d6 Nf3 Nxe4 d4 d5 Bd3 Be7 O-O O-O', "Petrov's Defense, Modern Main Line"],
+  ['e4 e5 Nf3 Nf6 d4 exd4 e5 Ne4', "Petrov's Defense, Steinitz Attack"],
+  ['e4 e5 Nf3 Nf6 Nc3', "Petrov's Defense, Three Knights Variation"],
+
+  ['e4 e5 Nf3 d6', "Philidor Defense"],
+  ['e4 e5 Nf3 d6 d4 Nf6 Nc3 Nbd7', "Philidor Defense, Main Line"],
+  ['e4 e5 Nf3 d6 d4 exd4 Nxd4', "Philidor Defense, Exchange Variation"],
+
+  ['e4 e5 Bc4', "Bishop's Opening"],
+  ['e4 e5 Bc4 Nf6 Nc3 Bc5', "Bishop's Opening, Vienna Hybrid"],
+  ['e4 e5 Bc4 Bc5 Nf3', "Bishop's Opening, Nf3"],
+
+  ['e4 e5 Nc3', "Vienna Game"],
+  ['e4 e5 Nc3 Nf6 Bc4 Nxe4', "Vienna Game, Frankenstein-Dracula Variation"],
+  ['e4 e5 Nc3 Nf6 g3', "Vienna Game, Fianchetto Variation"],
+  ['e4 e5 Nc3 Bc5', "Vienna Game, Vienna Gambit setups"],
+
+  ['e4 e5 f4', "King's Gambit"],
+  ['e4 e5 f4 exf4', "King's Gambit Accepted"],
+  ['e4 e5 f4 exf4 Nf3 g5', "King's Gambit Accepted, Classical Defense"],
+  ['e4 e5 f4 exf4 Nf3 g5 h4 g4 Ne5', "King's Gambit Accepted, Kieseritzky Gambit"],
+  ['e4 e5 f4 exf4 Nf3 g5 Bc4 g4 O-O', "King's Gambit Accepted, Muzio Gambit"],
+  ['e4 e5 f4 exf4 Bc4 Qh4+ Kf1', "King's Gambit Accepted, Bishop's Gambit"],
+  ['e4 e5 f4 Bc5 Nf3 d6', "King's Gambit Declined, Classical Variation"],
+  ['e4 e5 f4 d5 exd5 e4', "King's Gambit Declined, Falkbeer Countergambit"],
+
+  // ===================== 1.e4 c5 (Sicilian) =====================
+  ['e4 c5', "Sicilian Defense"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3', "Sicilian Defense, Open, 2...d6"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6', "Sicilian Defense, Najdorf Variation"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6', "Najdorf Variation, English Attack"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 f3', "Najdorf Variation, English Attack, f3 move order"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5 e6 f4 Be7', "Najdorf Variation, Main Line (6.Bg5)"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be2 e5', "Najdorf Variation, Classical/Opocensky setup"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bc4 e6 Bb3', "Najdorf Variation, Fischer-Sozin Attack"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6', "Sicilian Defense, Dragon Variation"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3 Bg7 f3 O-O Qd2 Nc6', "Dragon Variation, Yugoslav Attack"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be2 Bg7', "Dragon Variation, Classical"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Bc4 Bg7 Bb3', "Dragon Variation, Sozin/Levenfish setups"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6 Be2 a6', "Sicilian Defense, Scheveningen Variation"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6 g4', "Scheveningen, Keres Attack"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6 Bg5 e6', "Sicilian Defense, Classical Variation (via d6)"],
+  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6 Bc4 e6', "Sicilian Defense, Sozin Attack"],
+  ['e4 c5 Nf3 d6 Bb5+ Bd7 Bxd7+ Qxd7 O-O', "Sicilian Defense, Moscow Variation"],
+  ['e4 c5 Nf3 d6 Bb5+ Nc6 O-O', "Sicilian Defense, Moscow Variation, 3...Nc6"],
+  ['e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 e5 Ndb5 d6 Bg5 a6 Na3 b5', "Sicilian Defense, Sveshnikov Variation"],
+  ['e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 d6 Bg5 e6', "Sicilian Defense, Classical Variation"],
+  ['e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 d6 Bc4 e6', "Sicilian Defense, Classical, Sozin"],
+  ['e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3 Bg7 f3 O-O Qd2', "Sicilian Defense, Accelerated Dragon"],
+  ['e4 c5 Nf3 Nc6 Bb5 g6 O-O Bg7 Re1', "Sicilian Defense, Rossolimo Variation"],
+  ['e4 c5 Nf3 Nc6 Bb5 e6 O-O Nge7', "Sicilian Defense, Rossolimo, 3...e6"],
+  ['e4 c5 Nf3 Nc6 Bb5 d6', "Sicilian Defense, Rossolimo, 3...d6"],
+  ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nc6 Nc3 Qc7 Be2 a6', "Sicilian Defense, Taimanov Variation"],
+  ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6', "Sicilian Defense, Kan Variation"],
+  ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6 Bd3 Nc6', "Sicilian Defense, Kan Variation, Bd3"],
+  ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6 Nc3 Qc7', "Sicilian Defense, Kan Variation, Nc3"],
+  ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nf6 Nc3 d6', "Sicilian Defense, Scheveningen (via 2...e6)"],
+  ['e4 c5 Nf3 Nf6 e5 Nd5 Nc3 e6', "Sicilian Defense, Nimzowitsch Variation"],
+  ['e4 c5 Nf3 g6 d4 cxd4 Nxd4 Bg7 Nc3 Nc6', "Sicilian Defense, Hyperaccelerated Dragon"],
+  ['e4 c5 c3', "Sicilian Defense, Alapin Variation"],
+  ['e4 c5 c3 Nf6 e5 Nd5 d4 d6', "Alapin Variation, main line"],
+  ['e4 c5 c3 d5 exd5 Qxd5 d4 Nf6', "Alapin Variation, 2...d5"],
+  ['e4 c5 c3 e6 d4 d5', "Alapin Variation, vs 2...e6"],
+  ['e4 c5 Nc3', "Sicilian Defense, Closed Variation"],
+  ['e4 c5 Nc3 Nc6 g3 g6', "Sicilian Defense, Closed, Main Line"],
+  ['e4 c5 Nc3 Nc6 f4 g6 Nf3 Bg7', "Sicilian Defense, Grand Prix Attack"],
+  ['e4 c5 Nc3 e6 g3 d5', "Sicilian Defense, Closed, vs 2...e6"],
+
+  // ===================== 1.e4 e6 (French) =====================
+  ['e4 e6', "French Defense"],
+  ['e4 e6 d4 d5 Nc3 Bb4', "French Defense, Winawer Variation"],
+  ['e4 e6 d4 d5 Nc3 Bb4 e5 c5 a3 Bxc3+ bxc3 Ne7 Qg4 O-O', "Winawer Variation, Main Line"],
+  ['e4 e6 d4 d5 Nc3 Nf6', "French Defense, Classical Variation"],
+  ['e4 e6 d4 d5 Nc3 Nf6 Bg5 Be7 e5 Nfd7 Bxe7 Qxe7 f4', "French Defense, Classical, Main Line"],
+  ['e4 e6 d4 d5 Nc3 Nf6 e5 Nfd7 f4 c5', "French Defense, Steinitz Variation"],
+  ['e4 e6 d4 d5 Nc3 dxe4 Nxe4 Nd7 Nf3 Ngf6', "French Defense, Rubinstein Variation"],
+  ['e4 e6 d4 d5 Nd2', "French Defense, Tarrasch Variation"],
+  ['e4 e6 d4 d5 Nd2 c5 Ngf3', "Tarrasch Variation, 3...c5"],
+  ['e4 e6 d4 d5 Nd2 Nf6 e5 Nfd7 Bd3 c5 c3 Nc6', "Tarrasch Variation, 3...Nf6"],
+  ['e4 e6 d4 d5 Nd2 Be7 Ngf3 Nf6', "Tarrasch Variation, Closed Variation"],
+  ['e4 e6 d4 d5 exd5 exd5 Nf3 Nf6 Bd3 Bd6', "French Defense, Exchange Variation"],
+  ['e4 e6 d4 d5 e5 c5 c3 Nc6 Nf3 Qb6 a3', "French Defense, Advance Variation"],
+
+  // ===================== 1.e4 c6 (Caro-Kann) =====================
+  ['e4 c6', "Caro-Kann Defense"],
+  ['e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5', "Caro-Kann Defense, Classical Variation"],
+  ['e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7', "Caro-Kann Defense, Classical Main Line"],
+  ['e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nd7 Ng5 Ngf6 Bd3 e6', "Caro-Kann Defense, Karpov Variation"],
+  ['e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Nxf6+ exf6', "Caro-Kann Defense, Bronstein-Larsen Variation"],
+  ['e4 c6 d4 d5 Nd2 dxe4 Nxe4 Nd7', "Caro-Kann Defense, Two Knights/Modern setups"],
+  ['e4 c6 d4 d5 exd5 cxd5 Bd3 Nc6 c3 Nf6', "Caro-Kann Defense, Exchange Variation"],
+  ['e4 c6 d4 d5 e5 Bf5 Nf3 e6 Be2', "Caro-Kann Defense, Advance Variation"],
+  ['e4 c6 c4', "Caro-Kann Defense, Panov-Botvinnik Attack setups"],
+
+  // ===================== other e4 openings =====================
+  ['e4 d6 d4 Nf6 Nc3', "Pirc Defense"],
+  ['e4 d6 d4 Nf6 Nc3 g6 f4 Bg7 Nf3 O-O Bd3', "Pirc Defense, Austrian Attack"],
+  ['e4 d6 d4 Nf6 Nc3 g6 Be3 Bg7 Qd2 c6', "Pirc Defense, 150 Attack"],
+  ['e4 d6 d4 Nf6 Nc3 g6 Bc4 Bg7 Qe2', "Pirc Defense, Classical (Bc4)"],
+
+  ['e4 g6 d4 Bg7 Nc3 d6', "Modern Defense"],
+  ['e4 g6 d4 Bg7 Nc3 d6 f4', "Modern Defense, Austrian-style Attack"],
+  ['e4 g6 d4 Bg7 Nc3 d6 Be3 c6', "Modern Defense, Averbakh System"],
+
+  ['e4 Nf6 e5 Nd5', "Alekhine's Defense"],
+  ['e4 Nf6 e5 Nd5 d4 d6 Nf3 g6', "Alekhine's Defense, Fianchetto Variation"],
+  ['e4 Nf6 e5 Nd5 d4 d6 Nf3 dxe5 Nxe5', "Alekhine's Defense, Exchange Variation"],
+  ['e4 Nf6 e5 Nd5 c4 Nb6 d4', "Alekhine's Defense, Four Pawns setup"],
+
+  ['e4 d5 exd5 Qxd5 Nc3 Qa5 d4 Nf6 Nf3 c6', "Scandinavian Defense"],
+  ['e4 d5 exd5 Qxd5 Nc3 Qd6 d4 Nf6', "Scandinavian Defense, Modern Queen retreat"],
+  ['e4 d5 exd5 Nf6 d4 Nxd5 Nf3', "Scandinavian Defense, Modern (2...Nf6) Variation"],
+
+  // ===================== 1.d4 d5 =====================
+  ['d4 d5', "Closed Game (Queen's Pawn)"],
+  ['d4 d5 c4', "Queen's Gambit"],
+  ['d4 d5 c4 e6', "Queen's Gambit Declined"],
+  ['d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 h6 Bh4 b6', "Queen's Gambit Declined, Tartakower Variation"],
+  ['d4 d5 c4 e6 Nc3 Nf6 Bf4 Be7 e3 O-O', "Queen's Gambit Declined, Bf4 line"],
+  ['d4 d5 c4 e6 Nc3 Nf6 cxd5 exd5 Bg5 c6', "Queen's Gambit Declined, Exchange Variation"],
+  ['d4 d5 c4 e6 Nc3 Nf6 Nf3 Be7 Bg5', "Queen's Gambit Declined, Nf3 move order"],
+  ['d4 d5 c4 c6', "Slav Defense"],
+  ['d4 d5 c4 c6 Nf3 Nf6 Nc3 dxc4 a4 Bf5 e3 e6', "Slav Defense, Main Line"],
+  ['d4 d5 c4 c6 Nf3 Nf6 Nc3 e6', "Semi-Slav Defense"],
+  ['d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 e4', "Semi-Slav Defense, Botvinnik/Anti-Meran systems"],
+  ['d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 Bg5 dxc4 e4 b5', "Semi-Slav Defense, Botvinnik Variation"],
+  ['d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 e3 Nbd7 Bd3 dxc4 Bxc4 b5', "Semi-Slav Defense, Meran Variation"],
+  ['d4 d5 c4 c6 cxd5 cxd5 Nc3 Nf6 Bf4', "Slav Defense, Exchange Variation"],
+  ['d4 d5 c4 dxc4', "Queen's Gambit Accepted"],
+  ['d4 d5 c4 dxc4 Nf3 Nf6 e3 e6 Bxc4 c5 O-O a6', "Queen's Gambit Accepted, Main Line"],
+  ['d4 d5 c4 e6 Nc3 c5 cxd5 exd5 Nf3 Nc6 g3', "Queen's Gambit Declined, Tarrasch Defense"],
+  ['d4 d5 c4 Nc6 Nf3 Bg4 cxd5', "Chigorin Defense"],
+  ['d4 d5 c4 e5 dxe5 d4', "Albin Countergambit"],
+  ['d4 d5 Nf3 Nf6 c4', "Queen's Pawn, Nf3 move order to QG"],
+  ['d4 d5 Bf4', "London System"],
+  ['d4 d5 Bf4 Nf6 e3 e6 Nf3 c5', "London System, 3...e6 main line"],
+  ['d4 d5 Bf4 Nf6 e3 e6 Nf3 Bd6 Bg3', "London System, ...Bd6 line"],
+  ['d4 d5 Nc3 Nf6 Bg5', "Veresov Opening"],
+
+  // ===================== 1.d4 Nf6 (Indian systems) =====================
+  ['d4 Nf6', "Indian Defense"],
+  ['d4 Nf6 c4 g6 Nc3 Bg7 e4 d6', "King's Indian Defense"],
+  ['d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 O-O Nc6 d5 Ne7', "King's Indian Defense, Classical Variation"],
+  ['d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f3 O-O Be3 e5', "King's Indian Defense, Sämisch Variation"],
+  ['d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f4 O-O Nf3 c5', "King's Indian Defense, Four Pawns Attack"],
+  ['d4 Nf6 c4 g6 Nc3 Bg7 Nf3 d5', "Grünfeld Defense"],
+  ['d4 Nf6 c4 g6 Nc3 Bg7 Nf3 d5 cxd5 Nxd5 e4 Nxc3 bxc3 c5', "Grünfeld Defense, Exchange Variation"],
+  ['d4 Nf6 c4 g6 Nc3 Bg7 Nf3 d5 Qb3 dxc4 Qxc4', "Grünfeld Defense, Russian System"],
+  ['d4 Nf6 c4 e6 Nc3 Bb4', "Nimzo-Indian Defense"],
+  ['d4 Nf6 c4 e6 Nc3 Bb4 e3 O-O Bd3 d5 Nf3 c5 O-O', "Nimzo-Indian Defense, Rubinstein Variation"],
+  ['d4 Nf6 c4 e6 Nc3 Bb4 Qc2 O-O a3 Bxc3+ Qxc3', "Nimzo-Indian Defense, Classical Variation"],
+  ['d4 Nf6 c4 e6 Nc3 Bb4 a3 Bxc3+ bxc3 O-O', "Nimzo-Indian Defense, Sämisch Variation"],
+  ['d4 Nf6 c4 e6 Nc3 Bb4 a3 Bxc3+ bxc3 c5', "Nimzo-Indian Defense, Sämisch, 5...c5"],
+  ['d4 Nf6 c4 e6 Nc3 Bb4 Nf3 b6', "Nimzo-Indian Defense, Kasparov Variation"],
+  ['d4 Nf6 c4 e6 Nf3 b6 g3 Ba6 b3', "Queen's Indian Defense"],
+  ['d4 Nf6 c4 e6 Nf3 b6 a3 Bb7', "Queen's Indian Defense, Petrosian Variation"],
+  ['d4 Nf6 c4 e6 Nf3 Bb4+ Bd2 Qe7 g3 Nc6 Bg2', "Bogo-Indian Defense"],
+  ['d4 Nf6 c4 e6 Nf3 Bb4+ Nbd2 O-O', "Bogo-Indian Defense, Nbd2 line"],
+  ['d4 Nf6 c4 c5 d5 e6 Nc3 exd5 cxd5 d6', "Modern Benoni"],
+  ['d4 Nf6 c4 c5 d5 e6 Nc3 exd5 cxd5 d6 e4 g6 Nf3 Bg7 Be2 O-O', "Modern Benoni, Main Line"],
+  ['d4 Nf6 c4 c5 d5 b5 cxb5 a6 bxa6', "Benko Gambit"],
+  ['d4 Nf6 c4 d6 Nc3 e5 Nf3 Nbd7', "Old Indian Defense"],
+  ['d4 Nf6 c4 e5 dxe5 Ng4 Bf4 Nc6', "Budapest Gambit"],
+
+  // ===================== 1.d4 f5 (Dutch) =====================
+  ['d4 f5', "Dutch Defense"],
+  ['d4 f5 g3 Nf6 Bg2 g6', "Dutch Defense, Leningrad Variation"],
+  ['d4 f5 g3 Nf6 Bg2 e6 Nf3 Bb4+', "Dutch Defense, Classical setups"],
+  ['d4 f5 c4 Nf6 g3 g6 Bg2 Bg7', "Dutch Defense, Leningrad, 2.c4 move order"],
+  ['d4 f5 c4 Nf6 g3 e6 Bg2 d5', "Dutch Defense, Stonewall Variation"],
+
+  ['d4 Nf6 Bg5 Ne4 Bf4', "Trompowsky Attack, 2...Ne4"],
+  ['d4 Nf6 Bg5 d5 e3', "Trompowsky Attack, 2...d5"],
+
+  // ===================== 1.c4 (English) and 1.Nf3 (Réti) =====================
+  ['c4', "English Opening"],
+  ['c4 e5 Nc3 Nf6 g3 d5 cxd5 Nxd5 Bg2 Nb6', "English Opening, Reversed Sicilian"],
+  ['c4 e5 Nc3 Nf6 g3 Bb4', "English Opening, Reversed Sicilian, 4...Bb4"],
+  ['c4 Nf6 Nc3 e5', "English Opening, vs 1...Nf6"],
+  ['c4 c5 Nf3 Nf6 g3 b6 Bg2 Bb7', "English Opening, Symmetrical Variation"],
+
+  ['Nf3 d5 c4', "Réti Opening"],
+  ['Nf3 Nf6', "Réti Opening, vs 1...Nf6"],
+  ['Nf3 c5 c4', "Réti/English transposition"],
+];
+
+/**
+ * Build the opening tree straight from LINES so the flat move-list is the
+ * single source of truth. Each entry is ['space separated SAN moves', name].
+ * We walk/create nodes for every move in the sequence, then attach the name
+ * to whichever node sits at the end of that exact sequence. Later entries
+ * that land on an already-named node overwrite the name (lets you patch a
+ * line by appending a corrected entry lower in the list).
+ */
+function buildOpeningTree(lines) {
+  const root = { name: "Starting Position", c: {} };
+  for (const [moveString, name] of lines) {
+    const moves = moveString.trim().split(/\s+/);
+    let node = root;
+    for (const san of moves) {
+      if (!node.c) node.c = {};
+      if (!node.c[san]) node.c[san] = { c: {} };
+      node = node.c[san];
+    }
+    node.name = name;
+  }
+  return root;
+}
+
+const OPENING_TREE = buildOpeningTree(LINES);
+
+/* =========================================================================
+   APP STATE
+   ========================================================================= */
+let orientation = 'white';
+let gameState = newGame();
+let history = []; // {san, move, prevBookNode, newBookNode, wasBookMove, prevOpeningName, newOpeningName}
+let currentBookNode = OPENING_TREE;
+let openingName = OPENING_TREE.name;
+let selected = null;
+let selectedDests = [];
+
+const PIECE_GLYPH = {
+  wK:'♔',wQ:'♕',wR:'♖',wB:'♗',wN:'♘',wP:'♙',
+  bK:'♚',bQ:'♛',bR:'♜',bB:'♝',bN:'♞',bP:'♟'
+};
+
+const boardEl = document.getElementById('board');
+const introEl = document.getElementById('intro');
+const appEl = document.getElementById('app');
+
+document.querySelectorAll('.choice-card').forEach(card=>{
+  card.addEventListener('click', ()=>{
+    orientation = card.dataset.choice;
+    introEl.style.display='none';
+    appEl.style.display='block';
+    startNewGame();
+  });
+});
+
+document.getElementById('btn-reset').addEventListener('click', startNewGame);
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-flip').addEventListener('click', ()=>{
+  orientation = orientation==='white' ? 'black' : 'white';
+  renderAll();
+});
+
+function startNewGame(){
+  gameState = newGame();
+  history = [];
+  currentBookNode = OPENING_TREE;
+  openingName = OPENING_TREE.name;
+  selected = null; selectedDests = [];
+  renderAll();
+}
+
+function findMoveForSan(state, sanKey){
+  const legal = legalMoves(state);
+  const stripped = stripSuffix(sanKey);
+  for (const m of legal){
+    if (stripSuffix(sanFor(state, m, legal)) === stripped) return m;
+  }
+  return null;
+}
+
+function attemptMove(fromSq, toSq){
+  const legalFrom = legalMoves(gameState, fromSq);
+  const matches = legalFrom.filter(m=>m.to===toSq);
+  if (matches.length===0) return false;
+  let move = matches.find(m=>m.promotion==='Q') || matches[0];
+
+  const allLegal = legalMoves(gameState);
+  const san = sanFor(gameState, move, allLegal);
+  const prevBookNode = currentBookNode;
+  const prevOpeningName = openingName;
+  const prevState = gameState;
+
+  const newState = makeMove(gameState, move);
+
+  let newBookNode = null, wasBookMove = false;
+  if (currentBookNode){
+    const stripped = stripSuffix(san);
+    const childKey = Object.keys(currentBookNode.c||{}).find(k=>stripSuffix(k)===stripped);
+    if (childKey){ newBookNode = currentBookNode.c[childKey]; wasBookMove = true; }
+  }
+  const newOpeningName = (newBookNode && newBookNode.name) ? newBookNode.name : prevOpeningName;
+
+  history.push({san, move, prevBookNode, newBookNode, wasBookMove, prevOpeningName, newOpeningName, prevState});
+  gameState = newState;
+  currentBookNode = newBookNode;
+  openingName = newOpeningName;
+  selected = null; selectedDests = [];
+  renderAll();
+  return true;
+}
+
+function undo(){
+  if (history.length===0) return;
+  const last = history.pop();
+  gameState = last.prevState;
+  currentBookNode = last.prevBookNode;
+  openingName = last.prevOpeningName;
+  selected = null; selectedDests = [];
+  renderAll();
+}
+
+function truncateTo(plyCount){
+  while (history.length > plyCount) undo();
+}
+
+/* =========================================================================
+   RENDERING
+   ========================================================================= */
+function displayToSquare(dr, dc){
+  if (orientation==='white') return sq(dr, dc);
+  return sq(7-dr, 7-dc);
+}
+
+function renderBoard(){
+  boardEl.innerHTML = '';
+  const lastMove = history.length ? history[history.length-1].move : null;
+  for (let dr=0; dr<8; dr++){
+    for (let dc=0; dc<8; dc++){
+      const square = displayToSquare(dr,dc);
+      const row = Math.floor(square/8), col = square%8;
+      const isLight = (row+col)%2===0;
+      const cell = document.createElement('div');
+      cell.className = 'sq ' + (isLight?'light':'dark');
+      cell.dataset.square = square;
+
+      if (dc===0){
+        const lbl = document.createElement('span'); lbl.className='coord'; lbl.textContent = rankOf(row);
+        cell.appendChild(lbl);
+      }
+
+      if (lastMove && (square===lastMove.from)) cell.classList.add('last-from');
+      if (lastMove && (square===lastMove.to)) cell.classList.add('last-to');
+      if (selected===square) cell.classList.add('selected');
+
+      const piece = gameState.board[square];
+      if (piece){
+        const p = document.createElement('div');
+        p.className = 'piece ' + (color(piece)==='w'?'white':'black');
+        p.textContent = PIECE_GLYPH[piece];
+        p.dataset.square = square;
+        cell.appendChild(p);
+      }
+
+      if (selectedDests.includes(square)){
+        const dot = document.createElement('div');
+        dot.className = 'dest-dot' + (piece ? ' capture' : '');
+        cell.appendChild(dot);
+      }
+
+      boardEl.appendChild(cell);
+    }
+  }
+  document.getElementById('orientation-note').textContent =
+    (orientation==='white' ? 'Viewing from White\u2019s side' : 'Viewing from Black\u2019s side') +
+    ' \u2014 you move both colors. ' + (gameState.turn==='w' ? 'White' : 'Black') + ' to move.';
+  document.getElementById('btn-undo').disabled = history.length===0;
+}
+
+function renderStatus(){
+  document.getElementById('status-name').textContent = openingName;
+  const badge = document.getElementById('status-badge');
+  const sub = document.getElementById('status-sub');
+  if (currentBookNode){
+    badge.textContent = 'In Theory';
+    badge.className = 'badge in-book';
+    sub.textContent = history.length + ' move' + (history.length===1?'':'s') + ' played, still within known opening theory.';
+  } else {
+    badge.textContent = 'Out of Theory';
+    badge.className = 'badge out-book';
+    const leavePly = history.findIndex(h=>!h.wasBookMove) + 1;
+    sub.textContent = 'Left known theory at move ' + Math.ceil(leavePly/2) + (leavePly%2===1?' (White)':' (Black)') + '. You\u2019re on your own from here \u2014 the game is still fully legal, just untracked.';
+  }
+}
+
+function renderBookMoves(){
+  const wrap = document.getElementById('book-moves');
+  wrap.innerHTML = '';
+  if (!currentBookNode || !currentBookNode.c || Object.keys(currentBookNode.c).length===0){
+    const note = document.createElement('div');
+    note.className = 'empty-note';
+    note.textContent = currentBookNode ? 'This is the end of the recorded line \u2014 no further catalogued theory moves.' : 'No theory moves to show \u2014 you\u2019re outside the opening book.';
+    wrap.appendChild(note);
+    return;
+  }
+  Object.keys(currentBookNode.c).forEach(key=>{
+    const child = currentBookNode.c[key];
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = '<span class="san">'+key+'</span>' + (child.name ? '<span class="nm">'+child.name+'</span>' : '');
+    chip.addEventListener('click', ()=>{
+      const m = findMoveForSan(gameState, key);
+      if (m) attemptMove(m.from, m.to);
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+function renderTree(){
+  const wrap = document.getElementById('tree');
+  wrap.innerHTML = '';
+  if (history.length===0){
+    const note = document.createElement('div');
+    note.className = 'empty-note';
+    note.textContent = 'Play a move to start building the line.';
+    wrap.appendChild(note);
+    return;
+  }
+  history.forEach((h, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'tree-row' + (h.wasBookMove ? '' : ' out');
+    const dot = document.createElement('div'); dot.className='node-dot'; row.appendChild(dot);
+
+    const main = document.createElement('div'); main.className='node-main';
+    const plyNum = Math.floor(idx/2)+1;
+    const label = document.createElement('span'); label.className='ply-label';
+    label.textContent = plyNum + (idx%2===0 ? '.' : '...');
+    main.appendChild(label);
+
+    const played = document.createElement('span'); played.className='played-san'; played.textContent = h.san;
+    main.appendChild(played);
+
+    if (h.newBookNode && h.newBookNode.name && h.newBookNode.name !== (idx>0?history[idx-1].newOpeningName:OPENING_TREE.name)){
+      const nm = document.createElement('span'); nm.className='played-name'; nm.textContent = h.newBookNode.name;
+      main.appendChild(nm);
+    }
+
+    // sibling branches: children of the book-node BEFORE this move, excluding the one played
+    if (h.prevBookNode && h.prevBookNode.c){
+      const branches = document.createElement('div'); branches.className='branches';
+      Object.keys(h.prevBookNode.c).forEach(key=>{
+        if (stripSuffix(key)===stripSuffix(h.san)) return;
+        const twig = document.createElement('span'); twig.className='twig';
+        const child = h.prevBookNode.c[key];
+        twig.textContent = key + (child.name ? ' \u2014 '+child.name : '');
+        twig.title = 'Play this instead from move ' + plyNum;
+        twig.addEventListener('click', ()=>{
+          truncateTo(idx);
+          const m = findMoveForSan(gameState, key);
+          if (m) attemptMove(m.from, m.to);
+        });
+        branches.appendChild(twig);
+      });
+      if (branches.children.length) main.appendChild(branches);
+    }
+
+    row.appendChild(main);
+    wrap.appendChild(row);
+  });
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function renderHistory(){
+  const wrap = document.getElementById('history-list');
+  wrap.innerHTML = '';
+  let firstOutIdx = history.findIndex(h=>!h.wasBookMove);
+  for (let i=0;i<history.length;i+=2){
+    const num = document.createElement('div'); num.className='mv-num'; num.textContent=(i/2+1)+'.';
+    wrap.appendChild(num);
+    const w = document.createElement('div'); w.className='mv'+(firstOutIdx!==-1 && i>=firstOutIdx?' out':''); w.textContent = history[i].san;
+    wrap.appendChild(w);
+    if (history[i+1]){
+      const b = document.createElement('div'); b.className='mv'+(firstOutIdx!==-1 && (i+1)>=firstOutIdx?' out':''); b.textContent = history[i+1].san;
+      wrap.appendChild(b);
+    } else {
+      const b = document.createElement('div'); wrap.appendChild(b);
+    }
+  }
+}
+
+function renderAll(){
+  renderBoard();
+  renderStatus();
+  renderBookMoves();
+  renderTree();
+  renderHistory();
+}
+
+/* =========================================================================
+   INPUT: pointer-based drag (works for mouse + touch) with tap-to-move fallback
+   ========================================================================= */
+let pointerDrag = null; // {fromSquare, pointerId, startX, startY, floatEl, moved}
+
+boardEl.addEventListener('pointerdown', (e)=>{
+  const pieceEl = e.target.closest('.piece');
+  const cellEl = e.target.closest('.sq');
+  if (!cellEl) return;
+  const square = parseInt(cellEl.dataset.square,10);
+
+  // If something already selected and this is a legal destination -> move immediately (tap-to-move)
+  if (selected!==null && selectedDests.includes(square)){
+    attemptMove(selected, square);
+    return;
+  }
+
+  if (!pieceEl) { selected=null; selectedDests=[]; renderAll(); return; }
+  const piece = gameState.board[square];
+  if (!piece || color(piece)!==gameState.turn){
+    selected=null; selectedDests=[]; renderAll();
+    return;
+  }
+
+  const dests = legalMoves(gameState, square).map(m=>m.to);
+  selected = square; selectedDests = dests;
+  renderAll();
+
+  pointerDrag = { fromSquare: square, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, moved:false };
+  const floatEl = document.createElement('div');
+  floatEl.className = 'floating-piece';
+  floatEl.textContent = PIECE_GLYPH[piece];
+  floatEl.style.color = color(piece)==='w' ? '#f7efe0' : '#171009';
+  document.body.appendChild(floatEl);
+  pointerDrag.floatEl = floatEl;
+  positionFloat(e.clientX, e.clientY);
+
+  const srcPieceEl = boardEl.querySelector('.piece[data-square="'+square+'"]');
+  if (srcPieceEl) srcPieceEl.classList.add('dragging-source');
+
+  e.preventDefault();
+});
+
+function positionFloat(x,y){
+  if (!pointerDrag || !pointerDrag.floatEl) return;
+  pointerDrag.floatEl.style.left = x + 'px';
+  pointerDrag.floatEl.style.top = y + 'px';
+  pointerDrag.floatEl.style.transform = 'translate(-50%,-50%)';
+}
+
+window.addEventListener('pointermove', (e)=>{
+  if (!pointerDrag) return;
+  const dx = e.clientX-pointerDrag.startX, dy = e.clientY-pointerDrag.startY;
+  if (Math.abs(dx)+Math.abs(dy) > 5) pointerDrag.moved = true;
+  positionFloat(e.clientX, e.clientY);
+});
+
+window.addEventListener('pointerup', (e)=>{
+  if (!pointerDrag) return;
+  const floatEl = pointerDrag.floatEl;
+  if (floatEl) floatEl.remove();
+  const srcPieceEl = boardEl.querySelector('.piece.dragging-source');
+  if (srcPieceEl) srcPieceEl.classList.remove('dragging-source');
+
+  if (pointerDrag.moved){
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const cellEl = under ? under.closest('.sq') : null;
+    if (cellEl){
+      const toSq = parseInt(cellEl.dataset.square,10);
+      if (selectedDests.includes(toSq)){
+        attemptMove(pointerDrag.fromSquare, toSq);
+      } else {
+        renderAll(); // keep selection for tap-to-move
+      }
+    }
+  }
+  pointerDrag = null;
+});
+
+})();
+</script>
+</body>
+</html>
