@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Openings Ledger — Chess Opening Trainer</title>
 <style>
+  /* colours and fonts */
   :root{
     --wood-dark:#7a5233;
     --wood-light:#e8d9ba;
@@ -30,7 +31,7 @@
   }
   ::selection{ background:var(--gold-dim); color:var(--cream); }
 
-  /* ---------- intro / color choice screen ---------- */
+  /* color choice screen css */
   #intro{
     min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
     padding:32px 20px; text-align:center;
@@ -57,7 +58,7 @@
   .choice-card .label{ font-size:14px; letter-spacing:.03em; color:var(--cream); }
   .choice-card .desc{ font-size:12px; color:var(--muted); margin-top:4px; }
 
-  /* ---------- app shell ---------- */
+  /* app shell  */
   #app{ display:none; max-width:1180px; margin:0 auto; padding:20px 18px 60px; }
   header.top{
     display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:12px;
@@ -81,7 +82,7 @@
   .layout{ display:grid; grid-template-columns: minmax(320px,520px) 1fr; gap:26px; align-items:start; }
   @media (max-width: 880px){ .layout{ grid-template-columns:1fr; } }
 
-  /* ---------- board ---------- */
+  /*  board  */
   #board-wrap{ display:flex; flex-direction:column; align-items:center; gap:14px; }
   #board{
     width:100%; max-width:520px; aspect-ratio:1/1; display:grid;
@@ -116,7 +117,7 @@
 
   .orientation-note{ font-size:12px; color:var(--muted); font-family:var(--mono); text-align:center; }
 
-  /* ---------- side panel ---------- */
+  /*  side panel  */
   .panel-block{
     background:var(--panel); border:1px solid var(--hairline); border-radius:6px; padding:16px 18px; margin-bottom:16px;
   }
@@ -144,7 +145,7 @@
   .chip .nm{ font-family:var(--sans); font-size:10.5px; color:var(--muted); white-space:normal; }
   .empty-note{ color:var(--muted); font-size:13px; font-style:italic; }
 
-  /* ---------- tree ---------- */
+  /* openings tree  */
   #tree{ max-height:340px; overflow-y:auto; padding-right:4px; }
   .tree-row{ display:flex; align-items:flex-start; position:relative; padding-left:18px; min-height:34px; }
   .tree-row::before{
@@ -171,7 +172,7 @@
   }
   .tree-row .twig:hover{ color:var(--gold); border-color:var(--gold-dim); }
 
-  /* ---------- move history ---------- */
+  /*  move history  */
   #history-list{ display:grid; grid-template-columns: 30px 1fr 1fr; row-gap:4px; font-family:var(--mono); font-size:13px; }
   #history-list .mv-num{ color:var(--muted); }
   #history-list .mv{ color:var(--cream); }
@@ -185,7 +186,7 @@
 <div id="intro">
   <div class="eyebrow">Openings Ledger</div>
   <h1>Study the book, move by move.</h1>
-  <p class="sub">Play out any opening move by move — for either side. The moment you step outside known theory, it'll tell you plainly. Choose which side of the board you'd like to view from (you'll be moving both colors).</p>
+  <p class="sub">Play out any opening move by move. Only covers theory. Choose which side of the board to view from.</p>
   <div class="choice-row">
     <div class="choice-card" data-choice="white">
       <div class="glyph white">♔</div>
@@ -240,27 +241,23 @@
       </div>
     </div>
   </div>
-
-  <footer class="credit">every line here is validated move-by-move against full chess rules</footer>
 </div>
 
 <script>
 (function(){
 'use strict';
 
-/* =========================================================================
-   CHESS ENGINE  (full legal move generation, SAN notation)
-   ========================================================================= */
+/*  chess engine (full legal move generation, SAN notation) */
 
 function initialBoard() {
   const b = new Array(64).fill(null);
-  const back = ['R','N','B','Q','K','B','N','R'];
+  const back = ['R','N','B','Q','K','B','N','R']; // back row pieces in order
   for (let c = 0; c < 8; c++) {
     b[0*8+c] = 'b'+back[c];
     b[1*8+c] = 'bP';
     b[6*8+c] = 'wP';
     b[7*8+c] = 'w'+back[c];
-  }
+  } // add pawns and pieces to each side. 
   return b;
 }
 function sq(row,col){ return row*8+col; }
@@ -281,10 +278,10 @@ function newGame() {
     enPassant: null, halfmove: 0, fullmove: 1 };
 }
 
-const KNIGHT_DELTAS = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-const KING_DELTAS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-const BISHOP_DIRS = [[-1,-1],[-1,1],[1,-1],[1,1]];
-const ROOK_DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+const KNIGHT_DELTAS = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]; // ways the knight can move
+const KING_DELTAS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]; // ways the king can move
+const BISHOP_DIRS = [[-1,-1],[-1,1],[1,-1],[1,1]]; // ways the bishop can move
+const ROOK_DIRS = [[-1,0],[1,0],[0,-1],[0,1]]; // ways the rook can move
 
 function isAttacked(board, square, byColor) {
   const row = Math.floor(square/8), col = square%8;
