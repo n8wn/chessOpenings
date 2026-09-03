@@ -244,7 +244,7 @@
 </div>
 
 <script>
-(function(){
+(async function(){
 'use strict';
 
 /*  chess engine (full legal move generation, SAN notation) */
@@ -480,252 +480,41 @@ function stripSuffix(s){ return s.replace(/[+#]$/, ''); }
    OPENING DATABASE  (built from LINES at load time — see below)
    ========================================================================= */
 
-const LINES = [
-  // ===================== umbrella / broad category labels =====================
-  // these name the position immediately after a defining move, before it
-  // branches into anything more specific — kept separate so the tree shows
-  // a label right away instead of waiting for a deeper, named line.
-  ['e4', "King's Pawn Game"],
-  ['d4', "Queen's Pawn Game"],
-  ['Nf3', "Réti Opening"],
+function parseCSVLine(line) {
+  const result = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i+1] === '"') { cur += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ',') { result.push(cur); cur = ''; }
+      else cur += ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
 
-  // ===================== 1.e4 e5 =====================
-  ['e4 e5', "Open Game"],
-  ['e4 e5 Nf3 Nc6 Bb5', "Ruy Lopez (Spanish Opening)"],
-  ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4', "Ruy Lopez, Morphy Defense"],
-  ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 O-O c3 d6', "Ruy Lopez, Closed Defense"],
-  ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 O-O c3 Na5 Bc2 c5', "Ruy Lopez, Chigorin Variation"],
-  ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 O-O c3 d5 exd5 Nxd5 Nxe5 Nxe5 Rxe5 c6', "Ruy Lopez, Marshall Attack"],
-  ['e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 d3', "Ruy Lopez, Morphy Defense, Modern (Anti-Marshall)"],
-  ['e4 e5 Nf3 Nc6 Bb5 a6 Bxc6 dxc6 O-O', "Ruy Lopez, Exchange Variation"],
-  ['e4 e5 Nf3 Nc6 Bb5 Nf6', "Ruy Lopez, Berlin Defense"],
-  ['e4 e5 Nf3 Nc6 Bb5 Nf6 O-O Nxe4', "Ruy Lopez, Berlin Defense, Open Variation"],
-  ['e4 e5 Nf3 Nc6 Bb5 Nf6 O-O Nxe4 d4 Nd6 Bxc6 dxc6 dxe5 Nf5', "Ruy Lopez, Berlin Defense, Endgame"],
-  ['e4 e5 Nf3 Nc6 Bb5 Nf6 O-O d6 d4 Bd7 Nc3 Be7', "Ruy Lopez, Berlin Defense Declined"],
-  ['e4 e5 Nf3 Nc6 Bb5 Nf6 d3', "Ruy Lopez, Berlin Defense, Anti-Berlin"],
-  ['e4 e5 Nf3 Nc6 Bb5 d6 d4 Bd7 Nc3 Nf6', "Ruy Lopez, Steinitz Defense"],
-  ['e4 e5 Nf3 Nc6 Bb5 g6 d4 exd4 Nxd4 Bg7', "Ruy Lopez, Fianchetto (Smyslov) Defense"],
-  ['e4 e5 Nf3 Nc6 Bb5 Bc5 c3 Nf6 d4', "Ruy Lopez, Classical Defense"],
-  ['e4 e5 Nf3 Nc6 Bb5 f5 Nc3 fxe4 Nxe4', "Ruy Lopez, Schliemann (Jaenisch) Gambit"],
+async function loadOpeningsCSV(url) {
+  const res = await fetch(url);
+  const text = await res.text();
+  const rows = text.split(/\r?\n/).filter(r => r.trim().length > 0);
+  rows.shift(); // drop header row (pgn,name)
+  return rows.map(r => {
+    const [pgn, name] = parseCSVLine(r);
+    return [pgn, name];
+  });
+}
 
-  ['e4 e5 Nf3 Nc6 Bc4', "Italian Game"],
-  ['e4 e5 Nf3 Nc6 Bc4 Bc5', "Italian Game, Giuoco Piano"],
-  ['e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 O-O', "Italian Game, Giuoco Pianissimo"],
-  ['e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4 exd4 cxd4 Bb4+', "Italian Game, Giuoco Piano, Main Line"],
-  ['e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4 exd4 cxd4 Bb4+ Nc3 Nxe4 O-O Bxc3', "Giuoco Piano, Main Line, Nc3 gambit"],
-  ['e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4 exd4 cxd4 Bb4+ Bd2 Bxd2+ Nbxd2 d5', "Giuoco Piano, Main Line, Bd2 line"],
-  ['e4 e5 Nf3 Nc6 Bc4 Bc5 b4', "Italian Game, Evans Gambit"],
-  ['e4 e5 Nf3 Nc6 Bc4 Bc5 b4 Bxb4 c3 Ba5 d4 exd4 O-O', "Evans Gambit, Main Line"],
-  ['e4 e5 Nf3 Nc6 Bc4 Nf6', "Italian Game, Two Knights Defense"],
-  ['e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Na5', "Two Knights Defense, Main Line"],
-  ['e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Na5 Bb5+ c6 dxc6 bxc6', "Two Knights Defense, Main Line continued"],
-  ['e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Nxd5 Nxf7 Kxf7 Qf3+ Ke6 Nc3', "Fried Liver Attack"],
-  ['e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 b5 Bf1 Nd4', "Two Knights Defense, Ulvestad Variation"],
-  ['e4 e5 Nf3 Nc6 Bc4 Nf6 d3 Bc5', "Italian Game, Two Knights, Quiet Line"],
-  ['e4 e5 Nf3 Nc6 Bc4 Nf6 Nc3 Nxe4 Nxe4 d5', "Two Knights, Nc3 line"],
-  ['e4 e5 Nf3 Nc6 Bc4 Nf6 d4 exd4 O-O', "Italian Game, Two Knights, Modern (Max Lange-ish) Variation"],
-
-  ['e4 e5 Nf3 Nc6 d4', "Scotch Game"],
-  ['e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Nf6 Nxc6 bxc6 e5 Qe7 Qe2 Nd5', "Scotch Game, Main Line"],
-  ['e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Nf6 Nc3 Bb4', "Scotch Game, Four Knights Variation"],
-  ['e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Bc5 Be3 Qf6 c3', "Scotch Game, Classical Variation"],
-  ['e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Qh4 Nc3 Bb4', "Scotch Game, Steinitz Variation"],
-  ['e4 e5 Nf3 Nc6 d4 exd4 Bc4', "Scotch Gambit"],
-  ['e4 e5 Nf3 Nc6 d4 exd4 Bc4 Bc5', "Scotch Gambit, Bc5"],
-  ['e4 e5 Nf3 Nc6 d4 exd4 Bc4 Nf6', "Scotch Gambit, Nf6"],
-
-  ['e4 e5 Nf3 Nc6 Nc3', "Four Knights Game"],
-  ['e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5 Bb4 O-O O-O d3 d6', "Four Knights Game, Spanish Variation"],
-  ['e4 e5 Nf3 Nc6 Nc3 Nf6 Bc4 Nxe4 Nxe4 d5', "Four Knights Game, Italian Variation"],
-  ['e4 e5 Nf3 Nc6 Nc3 Nf6 d4 exd4 Nxd4 Bb4', "Four Knights Game, Scotch Variation"],
-
-  ['e4 e5 Nf3 Nf6', "Petrov's (Russian) Defense"],
-  ['e4 e5 Nf3 Nf6 Nxe5 d6 Nf3 Nxe4 d4 d5 Bd3 Nc6 O-O Be7', "Petrov's Defense, Classical Main Line"],
-  ['e4 e5 Nf3 Nf6 Nxe5 d6 Nf3 Nxe4 d4 d5 Bd3 Be7 O-O O-O', "Petrov's Defense, Modern Main Line"],
-  ['e4 e5 Nf3 Nf6 d4 exd4 e5 Ne4', "Petrov's Defense, Steinitz Attack"],
-  ['e4 e5 Nf3 Nf6 Nc3', "Petrov's Defense, Three Knights Variation"],
-
-  ['e4 e5 Nf3 d6', "Philidor Defense"],
-  ['e4 e5 Nf3 d6 d4 Nf6 Nc3 Nbd7', "Philidor Defense, Main Line"],
-  ['e4 e5 Nf3 d6 d4 exd4 Nxd4', "Philidor Defense, Exchange Variation"],
-
-  ['e4 e5 Bc4', "Bishop's Opening"],
-  ['e4 e5 Bc4 Nf6 Nc3 Bc5', "Bishop's Opening, Vienna Hybrid"],
-  ['e4 e5 Bc4 Bc5 Nf3', "Bishop's Opening, Nf3"],
-
-  ['e4 e5 Nc3', "Vienna Game"],
-  ['e4 e5 Nc3 Nf6 Bc4 Nxe4', "Vienna Game, Frankenstein-Dracula Variation"],
-  ['e4 e5 Nc3 Nf6 g3', "Vienna Game, Fianchetto Variation"],
-  ['e4 e5 Nc3 Bc5', "Vienna Game, Vienna Gambit setups"],
-
-  ['e4 e5 f4', "King's Gambit"],
-  ['e4 e5 f4 exf4', "King's Gambit Accepted"],
-  ['e4 e5 f4 exf4 Nf3 g5', "King's Gambit Accepted, Classical Defense"],
-  ['e4 e5 f4 exf4 Nf3 g5 h4 g4 Ne5', "King's Gambit Accepted, Kieseritzky Gambit"],
-  ['e4 e5 f4 exf4 Nf3 g5 Bc4 g4 O-O', "King's Gambit Accepted, Muzio Gambit"],
-  ['e4 e5 f4 exf4 Bc4 Qh4+ Kf1', "King's Gambit Accepted, Bishop's Gambit"],
-  ['e4 e5 f4 Bc5 Nf3 d6', "King's Gambit Declined, Classical Variation"],
-  ['e4 e5 f4 d5 exd5 e4', "King's Gambit Declined, Falkbeer Countergambit"],
-
-  // ===================== 1.e4 c5 (Sicilian) =====================
-  ['e4 c5', "Sicilian Defense"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3', "Sicilian Defense, Open, 2...d6"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6', "Sicilian Defense, Najdorf Variation"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6', "Najdorf Variation, English Attack"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 f3', "Najdorf Variation, English Attack, f3 move order"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5 e6 f4 Be7', "Najdorf Variation, Main Line (6.Bg5)"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be2 e5', "Najdorf Variation, Classical/Opocensky setup"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bc4 e6 Bb3', "Najdorf Variation, Fischer-Sozin Attack"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6', "Sicilian Defense, Dragon Variation"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3 Bg7 f3 O-O Qd2 Nc6', "Dragon Variation, Yugoslav Attack"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be2 Bg7', "Dragon Variation, Classical"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Bc4 Bg7 Bb3', "Dragon Variation, Sozin/Levenfish setups"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6 Be2 a6', "Sicilian Defense, Scheveningen Variation"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6 g4', "Scheveningen, Keres Attack"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6 Bg5 e6', "Sicilian Defense, Classical Variation (via d6)"],
-  ['e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6 Bc4 e6', "Sicilian Defense, Sozin Attack"],
-  ['e4 c5 Nf3 d6 Bb5+ Bd7 Bxd7+ Qxd7 O-O', "Sicilian Defense, Moscow Variation"],
-  ['e4 c5 Nf3 d6 Bb5+ Nc6 O-O', "Sicilian Defense, Moscow Variation, 3...Nc6"],
-  ['e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 e5 Ndb5 d6 Bg5 a6 Na3 b5', "Sicilian Defense, Sveshnikov Variation"],
-  ['e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 d6 Bg5 e6', "Sicilian Defense, Classical Variation"],
-  ['e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 d6 Bc4 e6', "Sicilian Defense, Classical, Sozin"],
-  ['e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3 Bg7 f3 O-O Qd2', "Sicilian Defense, Accelerated Dragon"],
-  ['e4 c5 Nf3 Nc6 Bb5 g6 O-O Bg7 Re1', "Sicilian Defense, Rossolimo Variation"],
-  ['e4 c5 Nf3 Nc6 Bb5 e6 O-O Nge7', "Sicilian Defense, Rossolimo, 3...e6"],
-  ['e4 c5 Nf3 Nc6 Bb5 d6', "Sicilian Defense, Rossolimo, 3...d6"],
-  ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nc6 Nc3 Qc7 Be2 a6', "Sicilian Defense, Taimanov Variation"],
-  ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6', "Sicilian Defense, Kan Variation"],
-  ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6 Bd3 Nc6', "Sicilian Defense, Kan Variation, Bd3"],
-  ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6 Nc3 Qc7', "Sicilian Defense, Kan Variation, Nc3"],
-  ['e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nf6 Nc3 d6', "Sicilian Defense, Scheveningen (via 2...e6)"],
-  ['e4 c5 Nf3 Nf6 e5 Nd5 Nc3 e6', "Sicilian Defense, Nimzowitsch Variation"],
-  ['e4 c5 Nf3 g6 d4 cxd4 Nxd4 Bg7 Nc3 Nc6', "Sicilian Defense, Hyperaccelerated Dragon"],
-  ['e4 c5 c3', "Sicilian Defense, Alapin Variation"],
-  ['e4 c5 c3 Nf6 e5 Nd5 d4 d6', "Alapin Variation, main line"],
-  ['e4 c5 c3 d5 exd5 Qxd5 d4 Nf6', "Alapin Variation, 2...d5"],
-  ['e4 c5 c3 e6 d4 d5', "Alapin Variation, vs 2...e6"],
-  ['e4 c5 Nc3', "Sicilian Defense, Closed Variation"],
-  ['e4 c5 Nc3 Nc6 g3 g6', "Sicilian Defense, Closed, Main Line"],
-  ['e4 c5 Nc3 Nc6 f4 g6 Nf3 Bg7', "Sicilian Defense, Grand Prix Attack"],
-  ['e4 c5 Nc3 e6 g3 d5', "Sicilian Defense, Closed, vs 2...e6"],
-
-  // ===================== 1.e4 e6 (French) =====================
-  ['e4 e6', "French Defense"],
-  ['e4 e6 d4 d5 Nc3 Bb4', "French Defense, Winawer Variation"],
-  ['e4 e6 d4 d5 Nc3 Bb4 e5 c5 a3 Bxc3+ bxc3 Ne7 Qg4 O-O', "Winawer Variation, Main Line"],
-  ['e4 e6 d4 d5 Nc3 Nf6', "French Defense, Classical Variation"],
-  ['e4 e6 d4 d5 Nc3 Nf6 Bg5 Be7 e5 Nfd7 Bxe7 Qxe7 f4', "French Defense, Classical, Main Line"],
-  ['e4 e6 d4 d5 Nc3 Nf6 e5 Nfd7 f4 c5', "French Defense, Steinitz Variation"],
-  ['e4 e6 d4 d5 Nc3 dxe4 Nxe4 Nd7 Nf3 Ngf6', "French Defense, Rubinstein Variation"],
-  ['e4 e6 d4 d5 Nd2', "French Defense, Tarrasch Variation"],
-  ['e4 e6 d4 d5 Nd2 c5 Ngf3', "Tarrasch Variation, 3...c5"],
-  ['e4 e6 d4 d5 Nd2 Nf6 e5 Nfd7 Bd3 c5 c3 Nc6', "Tarrasch Variation, 3...Nf6"],
-  ['e4 e6 d4 d5 Nd2 Be7 Ngf3 Nf6', "Tarrasch Variation, Closed Variation"],
-  ['e4 e6 d4 d5 exd5 exd5 Nf3 Nf6 Bd3 Bd6', "French Defense, Exchange Variation"],
-  ['e4 e6 d4 d5 e5 c5 c3 Nc6 Nf3 Qb6 a3', "French Defense, Advance Variation"],
-
-  // ===================== 1.e4 c6 (Caro-Kann) =====================
-  ['e4 c6', "Caro-Kann Defense"],
-  ['e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5', "Caro-Kann Defense, Classical Variation"],
-  ['e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7', "Caro-Kann Defense, Classical Main Line"],
-  ['e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nd7 Ng5 Ngf6 Bd3 e6', "Caro-Kann Defense, Karpov Variation"],
-  ['e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Nxf6+ exf6', "Caro-Kann Defense, Bronstein-Larsen Variation"],
-  ['e4 c6 d4 d5 Nd2 dxe4 Nxe4 Nd7', "Caro-Kann Defense, Two Knights/Modern setups"],
-  ['e4 c6 d4 d5 exd5 cxd5 Bd3 Nc6 c3 Nf6', "Caro-Kann Defense, Exchange Variation"],
-  ['e4 c6 d4 d5 e5 Bf5 Nf3 e6 Be2', "Caro-Kann Defense, Advance Variation"],
-  ['e4 c6 c4', "Caro-Kann Defense, Panov-Botvinnik Attack setups"],
-
-  // ===================== other e4 openings =====================
-  ['e4 d6 d4 Nf6 Nc3', "Pirc Defense"],
-  ['e4 d6 d4 Nf6 Nc3 g6 f4 Bg7 Nf3 O-O Bd3', "Pirc Defense, Austrian Attack"],
-  ['e4 d6 d4 Nf6 Nc3 g6 Be3 Bg7 Qd2 c6', "Pirc Defense, 150 Attack"],
-  ['e4 d6 d4 Nf6 Nc3 g6 Bc4 Bg7 Qe2', "Pirc Defense, Classical (Bc4)"],
-
-  ['e4 g6 d4 Bg7 Nc3 d6', "Modern Defense"],
-  ['e4 g6 d4 Bg7 Nc3 d6 f4', "Modern Defense, Austrian-style Attack"],
-  ['e4 g6 d4 Bg7 Nc3 d6 Be3 c6', "Modern Defense, Averbakh System"],
-
-  ['e4 Nf6 e5 Nd5', "Alekhine's Defense"],
-  ['e4 Nf6 e5 Nd5 d4 d6 Nf3 g6', "Alekhine's Defense, Fianchetto Variation"],
-  ['e4 Nf6 e5 Nd5 d4 d6 Nf3 dxe5 Nxe5', "Alekhine's Defense, Exchange Variation"],
-  ['e4 Nf6 e5 Nd5 c4 Nb6 d4', "Alekhine's Defense, Four Pawns setup"],
-
-  ['e4 d5 exd5 Qxd5 Nc3 Qa5 d4 Nf6 Nf3 c6', "Scandinavian Defense"],
-  ['e4 d5 exd5 Qxd5 Nc3 Qd6 d4 Nf6', "Scandinavian Defense, Modern Queen retreat"],
-  ['e4 d5 exd5 Nf6 d4 Nxd5 Nf3', "Scandinavian Defense, Modern (2...Nf6) Variation"],
-
-  // ===================== 1.d4 d5 =====================
-  ['d4 d5', "Closed Game (Queen's Pawn)"],
-  ['d4 d5 c4', "Queen's Gambit"],
-  ['d4 d5 c4 e6', "Queen's Gambit Declined"],
-  ['d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 h6 Bh4 b6', "Queen's Gambit Declined, Tartakower Variation"],
-  ['d4 d5 c4 e6 Nc3 Nf6 Bf4 Be7 e3 O-O', "Queen's Gambit Declined, Bf4 line"],
-  ['d4 d5 c4 e6 Nc3 Nf6 cxd5 exd5 Bg5 c6', "Queen's Gambit Declined, Exchange Variation"],
-  ['d4 d5 c4 e6 Nc3 Nf6 Nf3 Be7 Bg5', "Queen's Gambit Declined, Nf3 move order"],
-  ['d4 d5 c4 c6', "Slav Defense"],
-  ['d4 d5 c4 c6 Nf3 Nf6 Nc3 dxc4 a4 Bf5 e3 e6', "Slav Defense, Main Line"],
-  ['d4 d5 c4 c6 Nf3 Nf6 Nc3 e6', "Semi-Slav Defense"],
-  ['d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 e4', "Semi-Slav Defense, Botvinnik/Anti-Meran systems"],
-  ['d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 Bg5 dxc4 e4 b5', "Semi-Slav Defense, Botvinnik Variation"],
-  ['d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 e3 Nbd7 Bd3 dxc4 Bxc4 b5', "Semi-Slav Defense, Meran Variation"],
-  ['d4 d5 c4 c6 cxd5 cxd5 Nc3 Nf6 Bf4', "Slav Defense, Exchange Variation"],
-  ['d4 d5 c4 dxc4', "Queen's Gambit Accepted"],
-  ['d4 d5 c4 dxc4 Nf3 Nf6 e3 e6 Bxc4 c5 O-O a6', "Queen's Gambit Accepted, Main Line"],
-  ['d4 d5 c4 e6 Nc3 c5 cxd5 exd5 Nf3 Nc6 g3', "Queen's Gambit Declined, Tarrasch Defense"],
-  ['d4 d5 c4 Nc6 Nf3 Bg4 cxd5', "Chigorin Defense"],
-  ['d4 d5 c4 e5 dxe5 d4', "Albin Countergambit"],
-  ['d4 d5 Nf3 Nf6 c4', "Queen's Pawn, Nf3 move order to QG"],
-  ['d4 d5 Bf4', "London System"],
-  ['d4 d5 Bf4 Nf6 e3 e6 Nf3 c5', "London System, 3...e6 main line"],
-  ['d4 d5 Bf4 Nf6 e3 e6 Nf3 Bd6 Bg3', "London System, ...Bd6 line"],
-  ['d4 d5 Nc3 Nf6 Bg5', "Veresov Opening"],
-
-  // ===================== 1.d4 Nf6 (Indian systems) =====================
-  ['d4 Nf6', "Indian Defense"],
-  ['d4 Nf6 c4 g6 Nc3 Bg7 e4 d6', "King's Indian Defense"],
-  ['d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 O-O Nc6 d5 Ne7', "King's Indian Defense, Classical Variation"],
-  ['d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f3 O-O Be3 e5', "King's Indian Defense, Sämisch Variation"],
-  ['d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f4 O-O Nf3 c5', "King's Indian Defense, Four Pawns Attack"],
-  ['d4 Nf6 c4 g6 Nc3 Bg7 Nf3 d5', "Grünfeld Defense"],
-  ['d4 Nf6 c4 g6 Nc3 Bg7 Nf3 d5 cxd5 Nxd5 e4 Nxc3 bxc3 c5', "Grünfeld Defense, Exchange Variation"],
-  ['d4 Nf6 c4 g6 Nc3 Bg7 Nf3 d5 Qb3 dxc4 Qxc4', "Grünfeld Defense, Russian System"],
-  ['d4 Nf6 c4 e6 Nc3 Bb4', "Nimzo-Indian Defense"],
-  ['d4 Nf6 c4 e6 Nc3 Bb4 e3 O-O Bd3 d5 Nf3 c5 O-O', "Nimzo-Indian Defense, Rubinstein Variation"],
-  ['d4 Nf6 c4 e6 Nc3 Bb4 Qc2 O-O a3 Bxc3+ Qxc3', "Nimzo-Indian Defense, Classical Variation"],
-  ['d4 Nf6 c4 e6 Nc3 Bb4 a3 Bxc3+ bxc3 O-O', "Nimzo-Indian Defense, Sämisch Variation"],
-  ['d4 Nf6 c4 e6 Nc3 Bb4 a3 Bxc3+ bxc3 c5', "Nimzo-Indian Defense, Sämisch, 5...c5"],
-  ['d4 Nf6 c4 e6 Nc3 Bb4 Nf3 b6', "Nimzo-Indian Defense, Kasparov Variation"],
-  ['d4 Nf6 c4 e6 Nf3 b6 g3 Ba6 b3', "Queen's Indian Defense"],
-  ['d4 Nf6 c4 e6 Nf3 b6 a3 Bb7', "Queen's Indian Defense, Petrosian Variation"],
-  ['d4 Nf6 c4 e6 Nf3 Bb4+ Bd2 Qe7 g3 Nc6 Bg2', "Bogo-Indian Defense"],
-  ['d4 Nf6 c4 e6 Nf3 Bb4+ Nbd2 O-O', "Bogo-Indian Defense, Nbd2 line"],
-  ['d4 Nf6 c4 c5 d5 e6 Nc3 exd5 cxd5 d6', "Modern Benoni"],
-  ['d4 Nf6 c4 c5 d5 e6 Nc3 exd5 cxd5 d6 e4 g6 Nf3 Bg7 Be2 O-O', "Modern Benoni, Main Line"],
-  ['d4 Nf6 c4 c5 d5 b5 cxb5 a6 bxa6', "Benko Gambit"],
-  ['d4 Nf6 c4 d6 Nc3 e5 Nf3 Nbd7', "Old Indian Defense"],
-  ['d4 Nf6 c4 e5 dxe5 Ng4 Bf4 Nc6', "Budapest Gambit"],
-
-  // ===================== 1.d4 f5 (Dutch) =====================
-  ['d4 f5', "Dutch Defense"],
-  ['d4 f5 g3 Nf6 Bg2 g6', "Dutch Defense, Leningrad Variation"],
-  ['d4 f5 g3 Nf6 Bg2 e6 Nf3 Bb4+', "Dutch Defense, Classical setups"],
-  ['d4 f5 c4 Nf6 g3 g6 Bg2 Bg7', "Dutch Defense, Leningrad, 2.c4 move order"],
-  ['d4 f5 c4 Nf6 g3 e6 Bg2 d5', "Dutch Defense, Stonewall Variation"],
-
-  ['d4 Nf6 Bg5 Ne4 Bf4', "Trompowsky Attack, 2...Ne4"],
-  ['d4 Nf6 Bg5 d5 e3', "Trompowsky Attack, 2...d5"],
-
-  // ===================== 1.c4 (English) and 1.Nf3 (Réti) =====================
-  ['c4', "English Opening"],
-  ['c4 e5 Nc3 Nf6 g3 d5 cxd5 Nxd5 Bg2 Nb6', "English Opening, Reversed Sicilian"],
-  ['c4 e5 Nc3 Nf6 g3 Bb4', "English Opening, Reversed Sicilian, 4...Bb4"],
-  ['c4 Nf6 Nc3 e5', "English Opening, vs 1...Nf6"],
-  ['c4 c5 Nf3 Nf6 g3 b6 Bg2 Bb7', "English Opening, Symmetrical Variation"],
-
-  ['Nf3 d5 c4', "Réti Opening"],
-  ['Nf3 Nf6', "Réti Opening, vs 1...Nf6"],
-  ['Nf3 c5 c4', "Réti/English transposition"],
-];
+const LINES = await loadOpeningsCSV('openings_clean.csv');
 
 /**
  * Build the opening tree straight from LINES so the flat move-list is the
